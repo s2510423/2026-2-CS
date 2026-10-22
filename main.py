@@ -1,6 +1,5 @@
 import microbit
 import radio
-radioChannel = 0
 nah = None
 M_LUT = [
     nah,nah,'E','T','I',
@@ -37,16 +36,35 @@ for i in M_etc.keys():
 Morse = tuple(M_LUT)
 del M_LUT, M_etc, nah
 
-def radioConfig(plusminus:bool = True):
-    global radioChannel
-    radioChannel = radioChannel+1-2*(plusminus)
-    if radioChannel < 0 : radioChannel = 255
-    elif radioChannel > 255 : radioChannel = 0
-    radio.config(group=23)
-def read(digit): microbit.display.show(Morse[digit])
-def send(data: bytearray): radio.send_bytes(data)
-def receive(digits: bytearray):return [Morse[i] for i in digits]
+
+class Radio:    
+    def __init__(self):
+        self.group = 0
+    def config(self, plusminus:bool = True):
+        self.group = self.group+1-2*(plusminus)
+        if self.group < 0 : self.group = 255
+        elif self.group > 255 : self.group = 0
+        radio.config(group=self.group, channel=81)
+    def send(self,data: bytearray): 
+        radio.send_bytes(data)
+    def receive(self): 
+        digits = radio.receive_bytes()
+        if digits is not None: return digits
+class Display:
+    def error(self): microbit.display.show(microbit.Image.SAD)
+    def show(self,digit): microbit.display.show(Morse[digit])
+class Buffer:
+    def __init__(self): 
+        self.digit = 0b1
+        self.string = bytearray()
+    def add(self,bit:bool): 
+        if self.digit < 256:
+            self.digit = (self.digit << 1) | int(bit)
+        else: raise ValueError('Digit Size Overflow')
+        if Morse[self.digit] is not None: return self.digit
+
 def setup():
     radio.on()
+
 def loop(): 
     pass
