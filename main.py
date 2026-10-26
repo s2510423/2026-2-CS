@@ -41,7 +41,7 @@ class Radio:
     def __init__(self):
         self.group = 0
     def config(self, plusminus:bool = True):
-        self.group = self.group+1-2*(plusminus)
+        self.group = self.group-1+2*(plusminus)
         if self.group < 0 : self.group = 255
         elif self.group > 255 : self.group = 0
         radio.config(group=self.group, channel=81)
@@ -51,18 +51,31 @@ class Radio:
         digits = radio.receive_bytes()
         if digits is not None: return digits
 class Display:
+    def __init__(self):
+        self.buffer = bytearray()
+        self.digit = 0b1
     def error(self): microbit.display.show(microbit.Image.SAD)
-    def show(self,digit): microbit.display.show(Morse[digit])
+    def show(self): microbit.display.show(Morse[self.digit])
+    def switch(plusminus): pass
 class Buffer:
     def __init__(self): 
         self.digit = 0b1
         self.string = bytearray()
     def add(self,bit:bool): 
-        if self.digit < 256:
+        if self.digit < 128:
             self.digit = (self.digit << 1) | int(bit)
         else: raise ValueError('Digit Size Overflow')
-        if Morse[self.digit] is not None: return self.digit
-
+        return self.digit
+    def newLine(self):
+        digit = Morse[self.digit]
+        if digit: self.string.append(self.digit)
+        elif digit == False: self.string.pop()
+        self.digit = 0b1
+    def send(self): 
+        string = self.string
+        self.string = bytearray()
+        return string
+    
 def setup():
     radio.on()
 
