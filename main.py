@@ -1,5 +1,6 @@
 import microbit
 import radio
+import time
 nah = None
 M_LUT = [
     nah,nah,'E','T','I',
@@ -75,7 +76,16 @@ class Buffer:
         string = self.string
         self.string = bytearray()
         return string
-    
+    def receive(self, string: bytearray):
+        return [Morse[digit] for digit in string]
+class Controller:
+    def __init__(self): 
+        self.A = False
+        self.B = False
+        self.startTime = microbit.running_time()
+        latency = 2000
+# 으흐흐흐흐 
+# microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
 def setup():
     radio.on()
 
