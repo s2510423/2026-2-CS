@@ -55,9 +55,24 @@ class Display:
     def __init__(self):
         self.buffer = bytearray()
         self.digit = 0b1
+        microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
+        self.addr = microbit.i2c.scan()
     def error(self): microbit.display.show(microbit.Image.SAD)
     def show(self): microbit.display.show(Morse[self.digit])
-    def switch(plusminus): pass
+    def switch(self,plusminus): pass
+    def print(self,string: str | bytearray):
+        if type(string) == str: 
+            tmpstring = string
+            string = bytearray()
+            for i, char in enumerate(tmpstring): string[i] = ord(char)
+        
+        
+        
+        microbit.i2c.write(self.addr,)
+    
+    # 으흐흐흐흐 
+    # microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
+    
 class Buffer:
     def __init__(self): 
         self.digit = 0b1
@@ -79,13 +94,12 @@ class Buffer:
     def receive(self, string: bytearray):
         return [Morse[digit] for digit in string]
 class Controller:
+    duration = 2000
     def __init__(self): 
         self.A = False
         self.B = False
         self.startTime = microbit.running_time()
-        latency = 2000
-# 으흐흐흐흐 
-# microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
+        
 def setup():
     radio.on()
 
