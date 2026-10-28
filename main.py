@@ -52,11 +52,13 @@ class Radio:
         digits = radio.receive_bytes()
         if digits is not None: return digits
 class Display:
+    def write(addr, byte): microbit.i2c.write()
     def __init__(self):
         self.buffer = bytearray()
         self.digit = 0b1
         microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
         self.addr = microbit.i2c.scan()
+        
     def error(self): microbit.display.show(microbit.Image.SAD)
     def show(self): microbit.display.show(Morse[self.digit])
     def switch(self,plusminus): pass
@@ -64,12 +66,13 @@ class Display:
         if type(string) == str: 
             tmpstring = string
             string = bytearray()
-            for i, char in enumerate(tmpstring): string[i] = ord(char)
-        
-        
+            for char in tmpstring: string.append(ord(char))
         
         microbit.i2c.write(self.addr,)
-    
+    def cursor(self):
+        mask= 0b1000
+        val = 0b0
+        if x == 0: x=0b00    
     # 으흐흐흐흐 
     # microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
     
