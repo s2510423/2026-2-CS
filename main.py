@@ -1,6 +1,9 @@
 import microbit
 import radio
 import time
+if not hasattr(time, "sleep_us"):
+    time.sleep_us = lambda us: time.sleep(us / 1000000.0)
+
 nah = None
 M_LUT = [
     nah,nah,'E','T','I',
@@ -52,27 +55,46 @@ class Radio:
         digits = radio.receive_bytes()
         if digits is not None: return digits
 class Display:
-    def write(addr, byte): microbit.i2c.write()
+    BK      = 0b1000
+    EN      = 0b0100
+    DT      = 0b0001
+
+    INIT    = bytes([0b0000,0b0001]) # Requires 2ms(2000 us) of Delay.
+    FUNC    = bytes([0b0010,0b1000])
+    ENTRY   = bytes([0b0000,0b0110])
+    CURSOR  = bytes([0b0000,0b1001])
+    LINE1   = bytes([0b1000,0b0000])
+    LINE2   = bytes([0b1100,0b0000])
     def __init__(self):
         self.buffer = bytearray()
         self.digit = 0b1
         microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
         self.addr = microbit.i2c.scan()
-        
     def error(self): microbit.display.show(microbit.Image.SAD)
     def show(self): microbit.display.show(Morse[self.digit])
     def switch(self,plusminus): pass
-    def print(self,string: str | bytearray):
+    def write(self,char: int,is_data:bool=True,wait:int=50):
+        if char < 0 or char > 128: raise ValueError
+        byte = (
+            (char & 0b1111) << 4,
+            char & 0b11110000
+            )
+        buf = []
+        if is_data: nbl = Display.BK|Display.DT
+        else: nbl = Display.BK
+        for nibble in byte:
+            microbit.i2c.write(self.addr,bytes([nibble|nbl]))
+            time.sleep_us(1)
+            microbit.i2c.write(self.addr,bytes([nibble|nbl|Display.EN]))
+            time.sleep_us(wait)
+
+    def print(self,string: str | bytearray | bytes):
         if type(string) == str: 
             tmpstring = string
             string = bytearray()
             for char in tmpstring: string.append(ord(char))
-        
-        microbit.i2c.write(self.addr,)
-    def cursor(self):
-        mask= 0b1000
-        val = 0b0
-        if x == 0: x=0b00    
+        for char in string: self.write(char)
+    def cursor(self): pass
     # 으흐흐흐흐 
     # microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
     
@@ -81,7 +103,7 @@ class Buffer:
         self.digit = 0b1
         self.string = bytearray()
     def add(self,bit:bool): 
-        if self.digit < 128:
+        if self.digit <= 128:
             self.digit = (self.digit << 1) | int(bit)
         else: raise ValueError('Digit Size Overflow')
         return self.digit
