@@ -1,9 +1,6 @@
 import microbit
 import radio
 import time
-if not hasattr(time, "sleep_us"):
-    time.sleep_us = lambda us: time.sleep(us / 1000000.0)
-
 nah = None
 M_LUT = [
     nah,' ','E','T','I',
@@ -40,31 +37,22 @@ for i in M_etc.keys():
 Morse = tuple(M_LUT)
 del M_LUT, M_etc, nah
 
-def handshake(send:bool=True): 
-    wave = ((9,8,7,8,9),(8,7,6,7,8),(7,6,5,6,7),(8,7,6,7,8),(9,8,7,8,9))
-    while True:
-        for a in range(0,10):
-            result = str()
-            for i in wave: 
-                for j in i: result += str((j+a+(-1*int(send)))%10)
-                result += ':'
-            microbit.display.show(microbit.Image(result))
-            microbit.sleep(15)
 
 class Radio:    
     def __init__(self):
         self.group = 0
     def config(self, plusminus:bool = True):
+        radio.off()
         self.group = self.group-1+2*(plusminus)
         if self.group < 0 : self.group = 255
         elif self.group > 255 : self.group = 0
         radio.config(group=self.group, channel=81)
+        radio.on()
         return self.group
-    def send(self,data: bytearray): 
+    def send(self,data): 
         radio.send_bytes(data)
     def receive(self): 
-        digits = radio.receive_bytes()
-        return digits
+        return radio.receive_bytes()
 class Display: #으흐흐흐 출처불명입니다 히히히
     BK      = 0b1000
     # backLight
@@ -93,11 +81,14 @@ class Display: #으흐흐흐 출처불명입니다 히히히
     INIT    = (CLEAR, ENTRY, FUNC)
     
     def __init__(self):
+        self.offset = 0
         self.buffer = bytearray()
         self.digit = 0b1
-        microbit.i2c.init(sda=microbit.pin0,scl=microbit.pin1)
+        microbit.i2c.init(sda='pin19',scl='pin20')
+        self.a=0
+        while len(microbit.i2c.scan()) is not 1: microbit.sleep(100)
         self.addr = microbit.i2c.scan()[0]
-        self.init()        
+        self.init()
     def error(self): microbit.display.show(microbit.Image.SAD)
     def write(self,char: int,is_data:bool=True,wait:int=5):
         if char < 0 or char > 128: raise ValueError
@@ -113,22 +104,36 @@ class Display: #으흐흐흐 출처불명입니다 히히히
             microbit.i2c.write(self.addr,bytes([nibble|nbl]))
             time.sleep_us(wait)
     def init(self): 
+        self.buffer = bytearray()
         self.write(self.INIT[0],False,2000)
         for cmd in self.INIT[1:]: self.write(cmd,False)
     def cursor(self,RW:bool=True):
         self.init()
         if RW: self.write(self.CURSOR_R,False) 
         else : self.write(self.CURSOR_W,False)
-    def print(self,string: str | bytearray | bytes,RW:bool=True):
+    def print(self,string: str | bytearray | bytes, RW=True):
         self.cursor(RW)
-        if type(string) == str: 
-            tmpstring = string
-            string = bytearray()
-            for char in tmpstring: string.append(ord(char))
-        for count, char in enumerate(string): 
-            if count == 16: self.write(self.LINE2,False)
-            self.write(char)
-class Buffer:
+        if isinstance(string,str):self.buffer = bytearray(string.encode("utf-8"))
+        else: self.buffer = bytearray([Morse[digit].encode("utf-8") for digit in string])
+        for i,digit in enumerate(self.buffer):
+            if i<self.offset: continue
+            if i==16+self.offset: self.write(self.LINE2,False)
+            self.write(digit)
+    def move(self,toRight=True,RW=True):
+        self.offset += (-1+(2*toRight))*16
+        if self.offset<0: self.offset += 16
+        if self.offset*16>len(self.buffer): self.offset -= 16
+        self.print(self.buffer,RW)
+    def handshake(self,send:bool=True): 
+        wave = ((9,8,7,8,9),(8,7,6,7,8),(7,6,5,6,7),(8,7,6,7,8),(9,8,7,8,9))
+        result = str()
+        for i in wave: 
+            for j in i: result += str((j+self.a+(-1*int(send)))%10)
+            result += ':'
+        microbit.display.show(microbit.Image(result))
+        microbit.sleep(15)
+        self.a=(self.a+1)%10
+class Buffer: 
     def __init__(self): 
         self.digit = 0b1
         self.string = bytearray()
@@ -146,9 +151,8 @@ class Buffer:
         string = self.string
         self.string = bytes()
         return string
-    def receive(self, string: bytearray):
+    def receive(self, string:bytearray):
         return bytes([Morse[digit] for digit in string])
-
 class Button: 
     NOPE =  0b00
     SHRT =  0b01
@@ -157,24 +161,24 @@ class Button:
     def __init__(self,func=microbit.button_a.is_pressed,thres:int=2000):
         self.state = [None,None]
         self.pressedTime = 0
-        self.clockTime = microbit.running_time()
+        self.clockTime = time.ticks_ms()
         self.func = func
         self.thres = thres
     def update(self):
         state = self.func()
-        if self.thres <= 0: raise ValueError
-        currentTime = microbit.running_time()
-        if state: self.pressedTime += currentTime - self.clockTime
+        if self.thres <= 0: raise ValueError 
+        currentTime = time.ticks_ms()
+        if state: self.pressedTime += time.ticks_diff(self.clockTime,currentTime)
         else: self.pressedTime = 0
         self.clockTime = currentTime
         self.state[1] = self.state[0]
         self.state[0] = self.cmd[(state<<1)|(self.pressedTime>=self.thres)]
         return self.state
-    def getstate(self):
-        state = self.update()
-        if self.state[0] == self.LONG: return self.LONG
-        elif self.state == [self.NOPE,self.SHRT]: return self.SHRT
-        else: return self.NOPE
+    def __call__(self):
+        self.update()
+        if   self.state == [self.LONG,self.SHRT]:   return self.LONG
+        elif self.state == [self.NOPE,self.SHRT]:   return self.SHRT
+        else:                                       return self.NOPE
 class Controller:
     N = 0b000
     B = 0b010
@@ -227,13 +231,140 @@ class Controller:
         self.AB = AB
         self.LUT = [self.N,self.N,self.SB,self.LB,self.SA,self.LA,self.N,self.AB]
     def update(self): # 0b(A: {Long:11}/{Short:01}/{No:00})(B: sameAsA) -> self.LUT_RAW
-        val = (self.a.getstate()<<2)|(self.b.getstate())
+        val = (self.a()<<2)|(self.b())
         return self.LUT_RAW[val]
-    def getstate(self): # 0b(A)(B)(L/S) -> [N,N,SB,LB,SA,LA,N,AB] -> self.LUT
+    def __call__(self): # 0b(A)(B)(L/S) -> [N,N,SB,LB,SA,LA,N,AB] -> self.LUT
         return self.LUT[self.update()]
-        
-def setup():
-    radio.on()
-
-def loop(): 
-    pass
+class Status:
+    def __init__(self,machine:Machine,controller:Controller, buffer:Buffer, display:Display, radio:Radio):
+        self.activated = False
+        self.reset = False
+        self.clockTime, self.currentTime = time.ticks_ms()
+        self.timer = 0
+        self.machine, self.controller, self.buffer, self.display, self.radio = machine, controller, buffer, display, radio
+    def wait(self,waitingTime):
+        self.currentTime = time.ticks_ms()
+        if time.ticks_diff(self.clockTime,self.currentTime)>=waitingTime: 
+            self.clockTime = self.currentTime
+            return True
+        return False
+    def toWait(self): 
+        self.reset = True
+        self.clockTime = time.ticks_ms()
+    def n (self):               #대기
+        if self.reset and self.wait(3000): 
+            self.display.init()
+            return True
+    def __call__(self,prev:Status,n,sb,lb,sa,la,ab):
+        if not self.activated:
+            self.controller.lut(n,sb,lb,sa,la,ab)
+            prev.activated = False
+            self.activated = True
+            self.display.init()
+        self.controller()()
+class Idle      (Status):
+    def n (self):               #수신 대기
+        super().n()
+        if self.radio.receive() == bytes([self.machine.REQ]): self.machine.getRequest(self)
+    sb_string = "Radio Group +1".center(16)
+    def sb(self):               #주파수 올리기
+        self.radio.config(True)
+        string = self.sb_string + ("Current Group: "+str(self.radio.group)).center(16)
+        self.display.print(string)
+        self.toWait()
+    def lb(self):               #발신시작
+        self.display.init()
+        return self.machine.send
+    sa_string = "Radio Group -1".center(16)
+    def sa(self):               #주파수 내리기
+        self.radio.config(False)
+        string = self.sa_string + ("Current Group: "+str(self.radio.group)).center(16)
+        self.display.print(string)
+        self.toWait()
+    def la(self):               #발신시작
+        return self.lb()
+    def ab(self):               #발신시작
+        return self.lb()
+    def __call__(self,prev:Status):
+        return super().__call__(prev,self.n,self.sb,self.lb,self.sa,self.la,self.ab)
+class GetRequest(Status):
+    def n (self):               #알림벨 노출 #TODO
+        self.display.handshake(False)
+        if super().n(): return self.machine.idle
+    sb_string = "[Rejected]".center(16)
+    def sb(self):               #거절
+        self.radio.send(bytes([self.machine.NACK]))
+        self.display.print(self.sb_string)
+        self.toWait()
+    def lb(self):               #거절
+        return self.sb()
+    def sa(self):               #수신
+        self.radio.send(bytes([self.machine.ACK]))
+        return self.machine.receive
+    def la(self):               #수신
+        return self.sa()
+    def ab(self):               #알림벨 노출
+        return self.n()
+    def __call__(self,prev:Status):
+        return super().__call__(prev,self.n,self.sb,self.lb,self.sa,self.la,self.ab)
+class Receive   (Status):
+    def sb(self):               #다음 줄
+        self.display.move(True)
+    def lb(self):               #종료
+        self.radio.send(self.machine.DONE)
+        return self.machine.idle 
+    def sa(self):               #이전 줄
+        self.display.move(False)
+    def la(self):               #종료
+        return self.lb()
+    def ab(self):               #종료
+        return self.lb()
+    def __call__(self,prev:Status):
+        digits = self.radio.receive()
+        self.display.print(digits)
+        return super().__call__(prev,self.n,self.sb,self.lb,self.sa,self.la,self.ab)
+class Send      (Status):
+    def sb(self):               #선 입력
+        self.buffer.add(True)
+    def lb(self):               #다음 글자
+        self.buffer.newDigit()
+        self.display.print(self.buffer.string,False)
+        lines = len(self.buffer.string)//16
+        for _ in range(lines-1): self.display.move(True,False)
+    def sa(self):               #점 입력
+        self.buffer.add(False)
+    def la(self):               #다음 글자
+        return self.lb()
+    def ab(self):               #작성 완료 및 발신
+        self.lb()
+        self.radio.send([self.machine.REQ])
+        self.radio.send(self.buffer.send())
+        self.display.print("Receiver is Reading Message...")
+        while True: 
+            self.display.handshake()
+            if self.radio.receive() == self.machine.DONE: return self.machine.idle
+    def __call__(self,prev:Status):
+        return super().__call__(prev,self.n,self.sb,self.lb,self.sa,self.la,self.ab)
+class Machine: 
+    REQ = 19 #Early-Middle 1900's: The Age of You-Know-Where
+    ACK = 33 #1933: The Arise
+    NACK= 45 #1945: The Downfall
+    DONE= 49 #1949: The Division
+    def setup(self):
+        self.controller = Controller(                                                           )
+        self.buffer     = Buffer    (                                                           )
+        self.display    = Display   (                                                           )
+        self.radio      = Radio     (                                                           )
+        self.idle       = Idle      ( self, self.controller,self.buffer,self.display,self.radio )
+        self.getRequest = GetRequest( self, self.controller,self.buffer,self.display,self.radio )
+        self.receive    = Receive   ( self, self.controller,self.buffer,self.display,self.radio )
+        self.send       = Send      ( self, self.controller,self.buffer,self.display,self.radio )
+        self.state = [self.idle, self.idle, self.idle]
+    def loop(self):
+        while True: 
+            self.state[0] = self.state[1](self.state[2])
+            self.state[2] = self.state[1]
+            self.state[1] = self.state[0]
+machine = Machine()
+machine.setup()
+machine.loop() 
