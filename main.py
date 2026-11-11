@@ -1,6 +1,9 @@
 import microbit
 import radio
 import time
+
+def center(self,length):
+    return ((length-len(self))//2)*' ' + self + ((length-len(self))-(length-len(self))//2)*' '
 nah = None
 M_LUT = [
     nah,' ','E','T','I',
@@ -40,6 +43,7 @@ del M_LUT, M_etc, nah
 
 class Radio:    
     def __init__(self):
+        
         self.group = 0
     def config(self, plusminus:bool = True):
         radio.off()
@@ -84,7 +88,7 @@ class Display: #으흐흐흐 출처불명입니다 히히히
         self.offset = 0
         self.buffer = bytearray()
         self.digit = 0b1
-        microbit.i2c.init(sda='pin19',scl='pin20')
+        microbit.i2c.init(sda=microbit.pin19,scl=microbit.pin20)
         self.a=0
         while len(microbit.i2c.scan()) is not 1: microbit.sleep(100)
         self.addr = microbit.i2c.scan()[0]
@@ -266,19 +270,19 @@ class Idle      (Status):
     def n (self):               #수신 대기
         super().n()
         if self.radio.receive() == bytes([self.machine.REQ]): self.machine.getRequest(self)
-    sb_string = "Radio Group +1".center(16)
+    sb_string = center("Radio Group +1",16)
     def sb(self):               #주파수 올리기
         self.radio.config(True)
-        string = self.sb_string + ("Current Group: "+str(self.radio.group)).center(16)
+        string = self.sb_string + center(("Current Group: "+str(self.radio.group)),16)
         self.display.print(string)
         self.toWait()
     def lb(self):               #발신시작
         self.display.init()
         return self.machine.send
-    sa_string = "Radio Group -1".center(16)
+    sa_string = center("Radio Group -1",16)
     def sa(self):               #주파수 내리기
         self.radio.config(False)
-        string = self.sa_string + ("Current Group: "+str(self.radio.group)).center(16)
+        string = self.sa_string + center(("Current Group: "+str(self.radio.group)),16)
         self.display.print(string)
         self.toWait()
     def la(self):               #발신시작
@@ -291,7 +295,7 @@ class GetRequest(Status):
     def n (self):               #알림벨 노출 #TODO
         self.display.handshake(False)
         if super().n(): return self.machine.idle
-    sb_string = "[Rejected]".center(16)
+    sb_string = center("[Rejected]",16)
     def sb(self):               #거절
         self.radio.send(bytes([self.machine.NACK]))
         self.display.print(self.sb_string)
